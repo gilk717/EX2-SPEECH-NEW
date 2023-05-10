@@ -141,9 +141,8 @@ class MusicClassifier:
         and a output batch of corresponding labels [B, 1] (integer tensor)
         """
         wavs = wavs.squeeze(1)
-        # feats = self.exctract_feats(wavs)
-        scores = self.forward(wavs)
-        ## see shpae
+        feats = self.exctract_feats(wavs)
+        scores = self.forward(feats)
         return torch.argmax(scores, dim=1).unsqueeze(1)
 
 
@@ -160,10 +159,25 @@ class ClassifierHandler:
         train_paths_dict = json.load(train_paths_file)
         train_loader = list()
         batch_counter = 0
-        cur_data_torch = torch.tensor([])
-        cur_labels_torch = torch.tensor([])
         random.shuffle(train_paths_dict)
         module = MusicClassifier(OptimizationParameters())
+
+        test_paths_file = open(training_parameters.test_json_path)
+        test_paths_dict = json.load(test_paths_file)
+        test_data = torch.tensor([])
+        test_labels = torch.tensor([])
+        random.shuffle(test_paths_dict)
+        for inner_dict in test_paths_dict:
+            batch_counter += 1
+            audio, cr = librosa.load(inner_dict['path'])
+            cur_data_torch = torch.tensor(audio).unsqueeze(0)
+            label = Genre[inner_dict['label'].upper().replace('-', '_')]
+            cur_labels_torch = torch.tensor([float(label.value)]).unsqueeze(0)
+            test_data = torch.cat((test_data, cur_data_torch.clone()))
+            test_labels = torch.cat((test_labels, cur_labels_torch.clone()))
+        print("finished loading test data")
+        cur_data_torch = torch.tensor([])
+        cur_labels_torch = torch.tensor([])
         for inner_dict in train_paths_dict:
             batch_counter += 1
             audio, cr = librosa.load(inner_dict['path'])
@@ -174,8 +188,9 @@ class ClassifierHandler:
                 train_loader.append([module.exctract_feats(cur_data_torch.clone()), cur_labels_torch.clone()])
                 cur_data_torch = torch.tensor([])
                 cur_labels_torch = torch.tensor([])
-        print("finished loading data")
+        print("finished loading training data")
         # Closing file
+        test_paths_file.close()
         train_paths_file.close()
         ## print accuracy
         for epoch in range(training_parameters.num_epochs):
@@ -184,10 +199,7 @@ class ClassifierHandler:
                 labels = batch[1]
                 scores = module.forward(feats)
                 module.backward(feats, scores, labels)
-            if epoch % 10 == 0:
-                ClassifierHandler.compute_accuracy(train_loader[1][0], train_loader[1][1], module)
-        ClassifierHandler.compute_accuracy(train_loader[1][0], train_loader[1][1], module)
-
+        ClassifierHandler.compute_accuracy(test_data, test_labels, module)
     @staticmethod
     def get_pretrained_model() -> MusicClassifier:
         """
@@ -205,9 +217,9 @@ class ClassifierHandler:
         first_class_acc = torch.sum((output_labels == float(Genre.CLASSICAL.value)) & (labels == float(Genre.CLASSICAL.value))) / torch.sum(labels == float(Genre.CLASSICAL.value))
         second_class_acc = torch.sum((output_labels == float(Genre.HEAVY_ROCK.value)) & (labels == float(Genre.HEAVY_ROCK.value))) / torch.sum(labels == float(Genre.HEAVY_ROCK.value))
         third_class_acc = torch.sum((output_labels == float(Genre.REGGAE.value)) & (labels == float(Genre.REGGAE.value))) / torch.sum(labels == float(Genre.REGGAE.value))
-        print("first class accuracy: ", first_class_acc)
-        print("second class accuracy: ", second_class_acc)
-        print("third class accuracy: ", third_class_acc)
+        print("first class accuracy: ", first_class_acc[0])
+        print("second class accuracy: ", second_class_acc[0])
+        print("third class accuracy: ", third_class_acc[0])
 
 
 ClassifierHandler.train_new_model(TrainingParameters())
