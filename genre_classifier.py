@@ -28,7 +28,7 @@ class TrainingParameters:
     default values (so run won't break when we test this).
     """
     batch_size: int = 32
-    num_epochs: int = 25
+    num_epochs: int = 100
     train_json_path: str = "jsons/train.json"  # you should use this file path to load your train data
     test_json_path: str = "jsons/test.json"  # you should use this file path to load your test data
     # other training hyper parameters
@@ -40,7 +40,7 @@ class OptimizationParameters:
     This dataclass defines optimization related hyper-parameters to be passed to the model.
     feel free to add/change it as you see fit.
     """
-    learning_rate: float = 0.01
+    learning_rate: float = 0.001
 
 
 class MusicClassifier:
@@ -58,9 +58,9 @@ class MusicClassifier:
         self.opt_params = opt_params
         ## init Logistic regression weights and bias
         self.num_features = 20
-        self.first_class_weights = torch.zeros(self.num_features, requires_grad=False)
-        self.second_class_weights = torch.zeros(self.num_features, requires_grad=False)
-        self.third_class_weights = torch.zeros(self.num_features, requires_grad=False)
+        self.first_class_weights = torch.randn(self.num_features, requires_grad=False)
+        self.second_class_weights = torch.rand(self.num_features, requires_grad=False)
+        self.third_class_weights = torch.randn(self.num_features, requires_grad=False)
 
     def exctract_feats(self, wavs: torch.Tensor):
         """
@@ -141,8 +141,8 @@ class MusicClassifier:
         and a output batch of corresponding labels [B, 1] (integer tensor)
         """
         wavs = wavs.squeeze(1)
-        feats = self.exctract_feats(wavs)
-        scores = self.forward(feats)
+        # feats = self.exctract_feats(wavs)
+        scores = self.forward(wavs)
         ## see shpae
         return torch.argmax(scores, dim=1).unsqueeze(1)
 
@@ -163,6 +163,7 @@ class ClassifierHandler:
         cur_data_torch = torch.tensor([])
         cur_labels_torch = torch.tensor([])
         random.shuffle(train_paths_dict)
+        module = MusicClassifier(OptimizationParameters())
         for inner_dict in train_paths_dict:
             batch_counter += 1
             audio, cr = librosa.load(inner_dict['path'])
@@ -170,17 +171,16 @@ class ClassifierHandler:
             label = Genre[inner_dict['label'].upper().replace('-', '_')]
             cur_labels_torch = torch.cat((cur_labels_torch, torch.tensor([float(label.value)]).unsqueeze(0)))
             if batch_counter % training_parameters.batch_size == 0:
-                train_loader.append([cur_data_torch.clone(), cur_labels_torch.clone()])
+                train_loader.append([module.exctract_feats(cur_data_torch.clone()), cur_labels_torch.clone()])
                 cur_data_torch = torch.tensor([])
                 cur_labels_torch = torch.tensor([])
         print("finished loading data")
         # Closing file
         train_paths_file.close()
         ## print accuracy
-        module = MusicClassifier(OptimizationParameters())
         for epoch in range(training_parameters.num_epochs):
             for batch in train_loader:
-                feats = module.exctract_feats(batch[0])
+                feats = batch[0]
                 labels = batch[1]
                 scores = module.forward(feats)
                 module.backward(feats, scores, labels)
