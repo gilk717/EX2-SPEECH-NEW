@@ -7,6 +7,33 @@ import librosa
 import json
 import numpy as np
 import random
+import matplotlib.pyplot as plt
+
+
+def plot_stft_and_log_mel_spectrogram(audio_data, lable, sample_rate=22050, hop_length=512 // 4, n_fft=512, n_mels=80):
+    fig, ax = plt.subplots(nrows=1, ncols=1, sharex=True, figsize=(10, 6), gridspec_kw={'hspace': 0.3})
+    ax.set(title=lable)
+    ax.label_outer()
+    log_mel_spectrogram = librosa.feature.melspectrogram(y=audio_data, sr=sample_rate, n_fft=n_fft,
+                                                         hop_length=hop_length, n_mels=n_mels)
+    mel_spect = librosa.power_to_db(log_mel_spectrogram, ref=np.max)
+    fig.colorbar(librosa.display.specshow(mel_spect, hop_length=hop_length, sr=sample_rate, x_axis='time', y_axis='mel',
+                                          ax=ax, cmap='magma'), ax=ax)
+    plt.show()
+
+
+def plot_spectral_center(audio_data, lable, sample_rate=22050):
+    # spectral centroid -- centre of mass -- weighted mean of the frequencies present in the sound
+    spectral_centroids = librosa.feature.spectral_centroid(y=audio_data, sr=sample_rate)[0]
+    # Computing the time variable for visualization
+    frames = range(len(spectral_centroids))
+    t = librosa.frames_to_time(frames)
+    # Normalising the spectral centroid for visualisation
+    # Plotting the Spectral Centroid along the waveform
+    plt.plot(t, spectral_centroids, color='r')
+    plt.title(lable)
+    plt.show()
+
 
 class Genre(Enum):
     """
@@ -28,7 +55,7 @@ class TrainingParameters:
     default values (so run won't break when we test this).
     """
     batch_size: int = 32
-    num_epochs: int = 100
+    num_epochs: int = 300
     train_json_path: str = "jsons/train.json"  # you should use this file path to load your train data
     test_json_path: str = "jsons/test.json"  # you should use this file path to load your test data
     # other training hyper parameters
@@ -57,10 +84,10 @@ class MusicClassifier:
         """
         self.opt_params = opt_params
         ## init Logistic regression weights and bias
-        self.num_features = 20
-        self.first_class_weights = torch.randn(self.num_features, requires_grad=False)
-        self.second_class_weights = torch.rand(self.num_features, requires_grad=False)
-        self.third_class_weights = torch.randn(self.num_features, requires_grad=False)
+        self.num_features = 23
+        self.first_class_weights = torch.zeros(self.num_features, requires_grad=False)
+        self.second_class_weights = torch.zeros(self.num_features, requires_grad=False)
+        self.third_class_weights = torch.zeros(self.num_features, requires_grad=False)  # 3 classes
 
     def exctract_feats(self, wavs: torch.Tensor):
         """
@@ -68,26 +95,18 @@ class MusicClassifier:
         we will not be observing this method.
         """
         feats = torch.zeros(wavs.shape[0], self.num_features)
-        ## compute mfcc into a colimn vector with shape (num_features,1)
         for i, wav in enumerate(wavs):
             audio_np = wav.squeeze().numpy()
-            mfcc = librosa.feature.mfcc(y=audio_np, n_mfcc=self.num_features)
+            mfcc = librosa.feature.mfcc(y=audio_np, n_mfcc=self.num_features - 3)
+            zero_crossings = librosa.zero_crossings(audio_np, pad=False)
+            zero_crossing_rate = np.mean(zero_crossings)
+            mfcc_mean = np.mean(mfcc, axis=1)
+            cur_feats = np.append(mfcc_mean, zero_crossing_rate)
+            rms_mean = np.mean(librosa.feature.rms(y=audio_np))
+            cur_feats = np.append(cur_feats, rms_mean)
+            cur_feats = np.append(cur_feats, 1)  # bias
             # put the features in the feats tensor
-            feats[i] = torch.tensor(np.mean(mfcc, axis=1))
-        # for i,wav in enumerate(wavs):
-        #     audio_np = wav.squeeze().numpy()
-        #
-        #     # Compute the amplitude envelope
-        #     amplitude_envelope = np.abs(audio_np)
-        #
-        #     # Compute the energy
-        #     energy = np.sum(audio_np ** 2)
-        #
-        #     # Compute the zero-crossing rate
-        #     zero_crossings = librosa.zero_crossings(audio_np, pad=False)
-        #     zero_crossing_rate = np.mean(zero_crossings)
-        #     # put the features in the feats tensor
-        #     feats[i] = torch.tensor([zero_crossing_rate , np.max(amplitude_envelope), np.mean(amplitude_envelope)])
+            feats[i] = torch.tensor(cur_feats)
         return feats
 
     def forward(self, feats: torch.Tensor) -> tp.Any:
@@ -122,7 +141,8 @@ class MusicClassifier:
         first_class_labels[labels == float(Genre.CLASSICAL.value)] = 1
         second_class_labels[labels == float(Genre.HEAVY_ROCK.value)] = 1
         third_class_labels[labels == float(Genre.REGGAE.value)] = 1
-        self.first_class_weights -= self.opt_params.learning_rate * (1 / feats.shape[0]) * (torch.matmul(output_scores[:, 0].squeeze(dim=-1) - first_class_labels.squeeze(dim=-1), feats))
+        self.first_class_weights -= self.opt_params.learning_rate * (1 / feats.shape[0]) * (
+            torch.matmul(output_scores[:, 0].squeeze(dim=-1) - first_class_labels.squeeze(dim=-1), feats))
         self.second_class_weights -= self.opt_params.learning_rate * (1 / feats.shape[0]) * torch.matmul(
             output_scores[:, 1].squeeze(dim=-1) - second_class_labels.squeeze(dim=-1), feats)
         self.third_class_weights -= self.opt_params.learning_rate * (1 / feats.shape[0]) * torch.matmul(
@@ -188,6 +208,8 @@ class ClassifierHandler:
                 train_loader.append([module.exctract_feats(cur_data_torch.clone()), cur_labels_torch.clone()])
                 cur_data_torch = torch.tensor([])
                 cur_labels_torch = torch.tensor([])
+            # if batch_counter % 500 == 0:
+            #     plot_stft_and_log_mel_spectrogram(audio, label.name, int(cr))
         print("finished loading training data")
         # Closing file
         test_paths_file.close()
@@ -200,6 +222,7 @@ class ClassifierHandler:
                 scores = module.forward(feats)
                 module.backward(feats, scores, labels)
         ClassifierHandler.compute_accuracy(test_data, test_labels, module)
+
     @staticmethod
     def get_pretrained_model() -> MusicClassifier:
         """
@@ -209,14 +232,20 @@ class ClassifierHandler:
         raise NotImplementedError("function is not implemented")
 
     @staticmethod
-    def compute_accuracy(wavs: torch.Tensor, labels: torch.Tensor, module: MusicClassifier ):
+    def compute_accuracy(wavs: torch.Tensor, labels: torch.Tensor, module: MusicClassifier):
         """
         """
         wavs = wavs.squeeze(1)
         output_labels = module.classify(wavs)
-        first_class_acc = torch.sum((output_labels == float(Genre.CLASSICAL.value)) & (labels == float(Genre.CLASSICAL.value))) / torch.sum(labels == float(Genre.CLASSICAL.value))
-        second_class_acc = torch.sum((output_labels == float(Genre.HEAVY_ROCK.value)) & (labels == float(Genre.HEAVY_ROCK.value))) / torch.sum(labels == float(Genre.HEAVY_ROCK.value))
-        third_class_acc = torch.sum((output_labels == float(Genre.REGGAE.value)) & (labels == float(Genre.REGGAE.value))) / torch.sum(labels == float(Genre.REGGAE.value))
+        first_class_acc = torch.sum(
+            (output_labels == float(Genre.CLASSICAL.value)) & (labels == float(Genre.CLASSICAL.value))) / torch.sum(
+            labels == float(Genre.CLASSICAL.value))
+        second_class_acc = torch.sum(
+            (output_labels == float(Genre.HEAVY_ROCK.value)) & (labels == float(Genre.HEAVY_ROCK.value))) / torch.sum(
+            labels == float(Genre.HEAVY_ROCK.value))
+        third_class_acc = torch.sum(
+            (output_labels == float(Genre.REGGAE.value)) & (labels == float(Genre.REGGAE.value))) / torch.sum(
+            labels == float(Genre.REGGAE.value))
         print("first class accuracy: ", first_class_acc.item())
         print("second class accuracy: ", second_class_acc.item())
         print("third class accuracy: ", third_class_acc.item())
