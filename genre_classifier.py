@@ -57,7 +57,7 @@ class MusicClassifier:
         """
         self.opt_params = opt_params
         ## init Logistic regression weights and bias
-        self.num_features = 10
+        self.num_features = 20
         self.first_class_weights = torch.zeros(self.num_features, requires_grad=False)
         self.second_class_weights = torch.zeros(self.num_features, requires_grad=False)
         self.third_class_weights = torch.zeros(self.num_features, requires_grad=False)
@@ -71,9 +71,9 @@ class MusicClassifier:
         ## compute mfcc into a colimn vector with shape (num_features,1)
         for i, wav in enumerate(wavs):
             audio_np = wav.squeeze().numpy()
-            mfcc = librosa.feature.mfcc(y=audio_np)
+            mfcc = librosa.feature.mfcc(y=audio_np, n_mfcc=self.num_features)
             # put the features in the feats tensor
-            feats[i] = torch.tensor([np.mean(mfcc), np.std(mfcc), np.max(mfcc), np.min(mfcc), np.median(mfcc), np.mean(mfcc[1:]), np.std(mfcc[1:]), np.max(mfcc[1:]), np.min(mfcc[1:]), np.median(mfcc[1:])])
+            feats[i] = torch.tensor(np.mean(mfcc, axis=1))
         # for i,wav in enumerate(wavs):
         #     audio_np = wav.squeeze().numpy()
         #
@@ -184,8 +184,8 @@ class ClassifierHandler:
                 labels = batch[1]
                 scores = module.forward(feats)
                 module.backward(feats, scores, labels)
-            if epoch == 70:
-                pass
+            if epoch % 10 == 0:
+                ClassifierHandler.compute_accuracy(train_loader[1][0], train_loader[1][1], module)
         ClassifierHandler.compute_accuracy(train_loader[1][0], train_loader[1][1], module)
 
     @staticmethod
