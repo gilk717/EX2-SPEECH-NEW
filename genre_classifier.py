@@ -28,7 +28,7 @@ class TrainingParameters:
     default values (so run won't break when we test this).
     """
     batch_size: int = 32
-    num_epochs: int = 100
+    num_epochs: int = 25
     train_json_path: str = "jsons/train.json"  # you should use this file path to load your train data
     test_json_path: str = "jsons/test.json"  # you should use this file path to load your test data
     # other training hyper parameters
@@ -40,7 +40,7 @@ class OptimizationParameters:
     This dataclass defines optimization related hyper-parameters to be passed to the model.
     feel free to add/change it as you see fit.
     """
-    learning_rate: float = 0.001
+    learning_rate: float = 0.01
 
 
 class MusicClassifier:
@@ -57,10 +57,10 @@ class MusicClassifier:
         """
         self.opt_params = opt_params
         ## init Logistic regression weights and bias
-        self.num_features = 20
-        self.first_class_weights = torch.randn(self.num_features, requires_grad=False)
-        self.second_class_weights = torch.randn(self.num_features, requires_grad=False)
-        self.third_class_weights = torch.randn(self.num_features, requires_grad=False)
+        self.num_features = 10
+        self.first_class_weights = torch.zeros(self.num_features, requires_grad=False)
+        self.second_class_weights = torch.zeros(self.num_features, requires_grad=False)
+        self.third_class_weights = torch.zeros(self.num_features, requires_grad=False)
 
     def exctract_feats(self, wavs: torch.Tensor):
         """
@@ -68,22 +68,26 @@ class MusicClassifier:
         we will not be observing this method.
         """
         feats = torch.zeros(wavs.shape[0], self.num_features)
-
-        for i,wav in enumerate(wavs):
+        ## compute mfcc into a colimn vector with shape (num_features,1)
+        for i, wav in enumerate(wavs):
             audio_np = wav.squeeze().numpy()
-
-            # Compute the amplitude envelope
-            amplitude_envelope = np.abs(audio_np)
-
-            # Compute the energy
-            energy = np.sum(audio_np ** 2)
-
-            # Compute the zero-crossing rate
-            zero_crossings = librosa.zero_crossings(audio_np, pad=False)
-            zero_crossing_rate = np.mean(zero_crossings)
+            mfcc = librosa.feature.mfcc(y=audio_np)
             # put the features in the feats tensor
-            feats[i] = torch.tensor([1 for i in range(self.num_features)])
-
+            feats[i] = torch.tensor([np.mean(mfcc), np.std(mfcc), np.max(mfcc), np.min(mfcc), np.median(mfcc), np.mean(mfcc[1:]), np.std(mfcc[1:]), np.max(mfcc[1:]), np.min(mfcc[1:]), np.median(mfcc[1:])])
+        # for i,wav in enumerate(wavs):
+        #     audio_np = wav.squeeze().numpy()
+        #
+        #     # Compute the amplitude envelope
+        #     amplitude_envelope = np.abs(audio_np)
+        #
+        #     # Compute the energy
+        #     energy = np.sum(audio_np ** 2)
+        #
+        #     # Compute the zero-crossing rate
+        #     zero_crossings = librosa.zero_crossings(audio_np, pad=False)
+        #     zero_crossing_rate = np.mean(zero_crossings)
+        #     # put the features in the feats tensor
+        #     feats[i] = torch.tensor([zero_crossing_rate , np.max(amplitude_envelope), np.mean(amplitude_envelope)])
         return feats
 
     def forward(self, feats: torch.Tensor) -> tp.Any:
@@ -115,14 +119,13 @@ class MusicClassifier:
         first_class_labels = torch.zeros_like(labels)
         second_class_labels = torch.zeros_like(labels)
         third_class_labels = torch.zeros_like(labels)
-        first_class_labels[labels == float(Genre.CLASSICAL.value)] = float(Genre.CLASSICAL.value)
-        second_class_labels[labels == float(Genre.HEAVY_ROCK.value)] = float(Genre.HEAVY_ROCK.value)
-        third_class_labels[labels == float(Genre.REGGAE.value)] = float(Genre.REGGAE.value)
-        self.first_class_weights -= (1 / feats.shape[0]) * (
-                    self.opt_params.learning_rate * torch.matmul(output_scores[:, 0].squeeze(dim=-1) - first_class_labels.squeeze(dim=-1), feats))
-        self.second_class_weights -= (1 / feats.shape[0]) * self.opt_params.learning_rate * torch.matmul(
+        first_class_labels[labels == float(Genre.CLASSICAL.value)] = 1
+        second_class_labels[labels == float(Genre.HEAVY_ROCK.value)] = 1
+        third_class_labels[labels == float(Genre.REGGAE.value)] = 1
+        self.first_class_weights -= self.opt_params.learning_rate * (1 / feats.shape[0]) * (torch.matmul(output_scores[:, 0].squeeze(dim=-1) - first_class_labels.squeeze(dim=-1), feats))
+        self.second_class_weights -= self.opt_params.learning_rate * (1 / feats.shape[0]) * torch.matmul(
             output_scores[:, 1].squeeze(dim=-1) - second_class_labels.squeeze(dim=-1), feats)
-        self.third_class_weights -= (1 / feats.shape[0]) * self.opt_params.learning_rate * torch.matmul(
+        self.third_class_weights -= self.opt_params.learning_rate * (1 / feats.shape[0]) * torch.matmul(
             output_scores[:, 2].squeeze(dim=-1) - third_class_labels.squeeze(dim=-1), feats)
 
     def get_weights_and_biases(self):
@@ -140,6 +143,7 @@ class MusicClassifier:
         wavs = wavs.squeeze(1)
         feats = self.exctract_feats(wavs)
         scores = self.forward(feats)
+        ## see shpae
         return torch.argmax(scores, dim=1).unsqueeze(1)
 
 
@@ -172,6 +176,7 @@ class ClassifierHandler:
         print("finished loading data")
         # Closing file
         train_paths_file.close()
+        ## print accuracy
         module = MusicClassifier(OptimizationParameters())
         for epoch in range(training_parameters.num_epochs):
             for batch in train_loader:
@@ -179,6 +184,9 @@ class ClassifierHandler:
                 labels = batch[1]
                 scores = module.forward(feats)
                 module.backward(feats, scores, labels)
+            if epoch == 70:
+                pass
+        ClassifierHandler.compute_accuracy(train_loader[1][0], train_loader[1][1], module)
 
     @staticmethod
     def get_pretrained_model() -> MusicClassifier:
@@ -187,6 +195,19 @@ class ClassifierHandler:
         hyperparameters and return the loaded model
         """
         raise NotImplementedError("function is not implemented")
+
+    @staticmethod
+    def compute_accuracy(wavs: torch.Tensor, labels: torch.Tensor, module: MusicClassifier ):
+        """
+        """
+        wavs = wavs.squeeze(1)
+        output_labels = module.classify(wavs)
+        first_class_acc = torch.sum((output_labels == float(Genre.CLASSICAL.value)) & (labels == float(Genre.CLASSICAL.value))) / torch.sum(labels == float(Genre.CLASSICAL.value))
+        second_class_acc = torch.sum((output_labels == float(Genre.HEAVY_ROCK.value)) & (labels == float(Genre.HEAVY_ROCK.value))) / torch.sum(labels == float(Genre.HEAVY_ROCK.value))
+        third_class_acc = torch.sum((output_labels == float(Genre.REGGAE.value)) & (labels == float(Genre.REGGAE.value))) / torch.sum(labels == float(Genre.REGGAE.value))
+        print("first class accuracy: ", first_class_acc)
+        print("second class accuracy: ", second_class_acc)
+        print("third class accuracy: ", third_class_acc)
 
 
 ClassifierHandler.train_new_model(TrainingParameters())
