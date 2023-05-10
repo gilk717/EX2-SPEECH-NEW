@@ -217,9 +217,9 @@ class ClassifierHandler:
         first_class_acc = torch.sum((output_labels == float(Genre.CLASSICAL.value)) & (labels == float(Genre.CLASSICAL.value))) / torch.sum(labels == float(Genre.CLASSICAL.value))
         second_class_acc = torch.sum((output_labels == float(Genre.HEAVY_ROCK.value)) & (labels == float(Genre.HEAVY_ROCK.value))) / torch.sum(labels == float(Genre.HEAVY_ROCK.value))
         third_class_acc = torch.sum((output_labels == float(Genre.REGGAE.value)) & (labels == float(Genre.REGGAE.value))) / torch.sum(labels == float(Genre.REGGAE.value))
-        print("first class accuracy: ", first_class_acc[0])
-        print("second class accuracy: ", second_class_acc[0])
-        print("third class accuracy: ", third_class_acc[0])
+        print("first class accuracy: ", first_class_acc.item())
+        print("second class accuracy: ", second_class_acc.item())
+        print("third class accuracy: ", third_class_acc.item())
 
 
 ClassifierHandler.train_new_model(TrainingParameters())
