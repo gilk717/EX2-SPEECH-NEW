@@ -10,9 +10,9 @@ import random
 import matplotlib.pyplot as plt
 
 
-def plot_stft_and_log_mel_spectrogram(audio_data, lable, sample_rate=22050, hop_length=512 // 4, n_fft=512, n_mels=80):
+def plot_stft_and_log_mel_spectrogram(audio_data, label, sample_rate=22050, hop_length=512 // 4, n_fft=512, n_mels=80):
     fig, ax = plt.subplots(nrows=1, ncols=1, sharex=True, figsize=(10, 6), gridspec_kw={'hspace': 0.3})
-    ax.set(title=lable)
+    ax.set(title=label)
     ax.label_outer()
     log_mel_spectrogram = librosa.feature.melspectrogram(y=audio_data, sr=sample_rate, n_fft=n_fft,
                                                          hop_length=hop_length, n_mels=n_mels)
@@ -22,7 +22,7 @@ def plot_stft_and_log_mel_spectrogram(audio_data, lable, sample_rate=22050, hop_
     plt.show()
 
 
-def plot_spectral_center(audio_data, lable, sample_rate=22050):
+def plot_spectral_center(audio_data, label, sample_rate=22050):
     # spectral centroid -- centre of mass -- weighted mean of the frequencies present in the sound
     spectral_centroids = librosa.feature.spectral_centroid(y=audio_data, sr=sample_rate)[0]
     # Computing the time variable for visualization
@@ -31,7 +31,7 @@ def plot_spectral_center(audio_data, lable, sample_rate=22050):
     # Normalising the spectral centroid for visualisation
     # Plotting the Spectral Centroid along the waveform
     plt.plot(t, spectral_centroids, color='r')
-    plt.title(lable)
+    plt.title(label)
     plt.show()
 
 
@@ -55,7 +55,7 @@ class TrainingParameters:
     default values (so run won't break when we test this).
     """
     batch_size: int = 32
-    num_epochs: int = 500
+    num_epochs: int = 1000
     train_json_path: str = "jsons/train.json"  # you should use this file path to load your train data
     test_json_path: str = "jsons/test.json"  # you should use this file path to load your test data
     # other training hyper parameters
@@ -113,7 +113,7 @@ class MusicClassifier:
         """
         this function performs a forward pass through logistic regression model, outputting scores for every class of.
         the three classes
-        feats: batch of extracted faetures
+        feats: batch of extracted features
         """
         scores = torch.sigmoid(torch.matmul(feats, self.first_class_weights))
         scores = torch.cat((scores.unsqueeze(1),
@@ -157,8 +157,8 @@ class MusicClassifier:
 
     def classify(self, wavs: torch.Tensor) -> torch.Tensor:
         """
-        this method should recieve a torch.Tensor of shape [batch, channels, time] (float tensor) 
-        and a output batch of corresponding labels [B, 1] (integer tensor)
+        this method should receive a torch.Tensor of shape [batch, channels, time] (float tensor)
+        and an output batch of corresponding labels [B, 1] (integer tensor)
         """
         wavs = wavs.squeeze(1)
         feats = self.exctract_feats(wavs)
@@ -175,20 +175,27 @@ class ClassifierHandler:
         You could program your training loop / training manager as you see fit.
         """
         # Opening JSON file
-        train_paths_file = open(training_parameters.train_json_path)
-        train_paths_dict = json.load(train_paths_file)
-        train_loader = list()
-        batch_counter = 0
-        random.shuffle(train_paths_dict)
         module = MusicClassifier(OptimizationParameters())
+        train_loader = ClassifierHandler.load_train_set_in_batches(training_parameters, module)
+        test_data, test_labels = ClassifierHandler.load_test_set(training_parameters)
+        ## print accuracy
+        for epoch in range(training_parameters.num_epochs):
+            for batch in train_loader:
+                feats = batch[0]
+                labels = batch[1]
+                scores = module.forward(feats)
+                module.backward(feats, scores, labels)
+        ClassifierHandler.compute_accuracy(test_data, test_labels, module)
+        return module
 
+    @staticmethod
+    def load_test_set(training_parameters: TrainingParameters):
         test_paths_file = open(training_parameters.test_json_path)
         test_paths_dict = json.load(test_paths_file)
         test_data = torch.tensor([])
         test_labels = torch.tensor([])
         random.shuffle(test_paths_dict)
         for inner_dict in test_paths_dict:
-            batch_counter += 1
             audio, cr = librosa.load(inner_dict['path'])
             cur_data_torch = torch.tensor(audio).unsqueeze(0)
             label = Genre[inner_dict['label'].upper().replace('-', '_')]
@@ -196,6 +203,17 @@ class ClassifierHandler:
             test_data = torch.cat((test_data, cur_data_torch.clone()))
             test_labels = torch.cat((test_labels, cur_labels_torch.clone()))
         print("finished loading test data")
+        # Closing file
+        test_paths_file.close()
+        return test_data, test_labels
+
+    @staticmethod
+    def load_train_set_in_batches(training_parameters: TrainingParameters, module):
+        train_paths_file = open(training_parameters.train_json_path)
+        train_paths_dict = json.load(train_paths_file)
+        train_loader = list()
+        batch_counter = 0
+        random.shuffle(train_paths_dict)
         cur_data_torch = torch.tensor([])
         cur_labels_torch = torch.tensor([])
         for inner_dict in train_paths_dict:
@@ -208,32 +226,22 @@ class ClassifierHandler:
                 train_loader.append([module.exctract_feats(cur_data_torch.clone()), cur_labels_torch.clone()])
                 cur_data_torch = torch.tensor([])
                 cur_labels_torch = torch.tensor([])
-            # if batch_counter % 500 == 0:
-            #     plot_stft_and_log_mel_spectrogram(audio, label.name, int(cr))
-        print("finished loading training data")
-        # Closing file
-        test_paths_file.close()
         train_paths_file.close()
-        ## print accuracy
-        for epoch in range(training_parameters.num_epochs):
-            for batch in train_loader:
-                feats = batch[0]
-                labels = batch[1]
-                scores = module.forward(feats)
-                module.backward(feats, scores, labels)
-        ClassifierHandler.compute_accuracy(test_data, test_labels, module)
+        print("finished loading training data")
+        return train_loader
 
     @staticmethod
     def get_pretrained_model() -> MusicClassifier:
         """
         This function should construct a 'MusicClassifier' object, load it's trained weights / 
-        hyperparameters and return the loaded model
+        hyper-parameters and return the loaded model
         """
         raise NotImplementedError("function is not implemented")
 
     @staticmethod
     def compute_accuracy(wavs: torch.Tensor, labels: torch.Tensor, module: MusicClassifier):
         """
+        computes the accuracy of each class
         """
         wavs = wavs.squeeze(1)
         output_labels = module.classify(wavs)
