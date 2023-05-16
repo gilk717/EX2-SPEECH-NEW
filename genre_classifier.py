@@ -89,6 +89,14 @@ class MusicClassifier:
         self.second_class_weights = torch.zeros(self.num_features, requires_grad=False)
         self.third_class_weights = torch.zeros(self.num_features, requires_grad=False)  # 3 classes
 
+    def set_weights(self, w1, w2, w3) -> None:
+        """
+        this function sets the weights of the logistic regression model.
+        """
+        self.first_class_weights = w1
+        self.second_class_weights = w2
+        self.third_class_weights = w3
+
     def exctract_feats(self, wavs: torch.Tensor):
         """
         this function extract features from a given audio.
@@ -153,7 +161,10 @@ class MusicClassifier:
         This function returns the weights and biases associated with this model object, 
         should return a tuple: (weights, biases)
         """
-        raise NotImplementedError("function is not implemented")
+        return (
+            torch.tensor(
+                [self.first_class_weights[:-1], self.second_class_weights[:-1], self.third_class_weights[:-1]]),
+            torch.tensor([self.first_class_weights[-1], self.second_class_weights[-1], self.third_class_weights[-1]]))
 
     def classify(self, wavs: torch.Tensor) -> torch.Tensor:
         """
@@ -178,7 +189,6 @@ class ClassifierHandler:
         module = MusicClassifier(OptimizationParameters())
         train_loader = ClassifierHandler.load_train_set_in_batches(training_parameters, module)
         test_data, test_labels = ClassifierHandler.load_test_set(training_parameters)
-        ## print accuracy
         for epoch in range(training_parameters.num_epochs):
             for batch in train_loader:
                 feats = batch[0]
@@ -236,7 +246,20 @@ class ClassifierHandler:
         This function should construct a 'MusicClassifier' object, load it's trained weights / 
         hyper-parameters and return the loaded model
         """
-        raise NotImplementedError("function is not implemented")
+        module = MusicClassifier(OptimizationParameters())
+        module.set_weights(torch.tensor([-0.0057978, 0.09079067, -0.06116471, -0.29027027, -0.09404992, -0.16239388,
+                                         -0.16560023, -0.03633982, 0.13538432, -0.1510415, 0.21880685, -0.09579992,
+                                         -0.0398302, 0.02022951, 0.18496828, 0.00722523, 0.561934, -0.17014208,
+                                         -0.02337782, 0.16052568, -0.00093151, -0.00308735, -0.02399822]),
+                           torch.tensor([0.03940499, -0.04013069, 0.00405579, 0.13892996, -0.0576029, -0.10031118,
+                                         0.14940748, 0.01245282, 0.07959052, 0.0941859, -0.01559121, 0.10083368,
+                                         -0.2745416, -0.20979874, -0.02631551, 0.14107245, 0.13260175, -0.3964954,
+                                         0.05904585, -0.01934657, -0.00569618, -0.02464337, -0.02358416]),
+                           torch.tensor([0.0067467, 0.01117177, 0.07332505, 0.00546377, 0.08037535, 0.23784086,
+                                         0.08857453, -0.01758306, -0.11535291, 0.13901068, 0.08652489, -0.13349035,
+                                         0.15270807, 0.16684859, 0.1583327, -0.29116356, -0.33416405, 0.32580003,
+                                         -0.20485455, -0.02429762, -0.00295077, 0.01629465, 0.12602653]))
+        return module
 
     @staticmethod
     def compute_accuracy(wavs: torch.Tensor, labels: torch.Tensor, module: MusicClassifier):
@@ -254,9 +277,7 @@ class ClassifierHandler:
         third_class_acc = torch.sum(
             (output_labels == float(Genre.REGGAE.value)) & (labels == float(Genre.REGGAE.value))) / torch.sum(
             labels == float(Genre.REGGAE.value))
-        print("first class accuracy: ", first_class_acc.item())
-        print("second class accuracy: ", second_class_acc.item())
-        print("third class accuracy: ", third_class_acc.item())
-
-
-ClassifierHandler.train_new_model(TrainingParameters())
+        print("classical accuracy: ", first_class_acc.item())
+        print("hard rock class accuracy: ", second_class_acc.item())
+        print("reggae class accuracy: ", third_class_acc.item())
+        print("total accuracy: ", torch.sum(output_labels == labels).item() / labels.shape[0])
