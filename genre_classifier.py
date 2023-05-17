@@ -9,6 +9,7 @@ import numpy as np
 import random
 import matplotlib.pyplot as plt
 
+random.seed(15)
 
 def plot_stft_and_log_mel_spectrogram(audio_data, label, sample_rate=22050, hop_length=512 // 4, n_fft=512, n_mels=80):
     fig, ax = plt.subplots(nrows=1, ncols=1, sharex=True, figsize=(10, 6), gridspec_kw={'hspace': 0.3})
@@ -55,7 +56,7 @@ class TrainingParameters:
     default values (so run won't break when we test this).
     """
     batch_size: int = 32
-    num_epochs: int = 1000
+    num_epochs: int = 100
     train_json_path: str = "jsons/train.json"  # you should use this file path to load your train data
     test_json_path: str = "jsons/test.json"  # you should use this file path to load your test data
     # other training hyper parameters
@@ -84,7 +85,7 @@ class MusicClassifier:
         """
         self.opt_params = opt_params
         ## init Logistic regression weights and bias
-        self.num_features = 23
+        self.num_features = 33
         self.first_class_weights = torch.zeros(self.num_features, requires_grad=False)
         self.second_class_weights = torch.zeros(self.num_features, requires_grad=False)
         self.third_class_weights = torch.zeros(self.num_features, requires_grad=False)  # 3 classes
@@ -206,7 +207,7 @@ class ClassifierHandler:
         test_labels = torch.tensor([])
         random.shuffle(test_paths_dict)
         for inner_dict in test_paths_dict:
-            audio, cr = librosa.load(inner_dict['path'])
+            audio, sr = librosa.load(inner_dict['path'])
             cur_data_torch = torch.tensor(audio).unsqueeze(0)
             label = Genre[inner_dict['label'].upper().replace('-', '_')]
             cur_labels_torch = torch.tensor([float(label.value)]).unsqueeze(0)
@@ -228,7 +229,7 @@ class ClassifierHandler:
         cur_labels_torch = torch.tensor([])
         for inner_dict in train_paths_dict:
             batch_counter += 1
-            audio, cr = librosa.load(inner_dict['path'])
+            audio, sr = librosa.load(inner_dict['path'])
             cur_data_torch = torch.cat((cur_data_torch, torch.tensor(audio).unsqueeze(0)))
             label = Genre[inner_dict['label'].upper().replace('-', '_')]
             cur_labels_torch = torch.cat((cur_labels_torch, torch.tensor([float(label.value)]).unsqueeze(0)))
@@ -280,4 +281,6 @@ class ClassifierHandler:
         print("classical accuracy: ", first_class_acc.item())
         print("hard rock class accuracy: ", second_class_acc.item())
         print("reggae class accuracy: ", third_class_acc.item())
-        print("total accuracy: ", torch.sum(output_labels == labels).item() / labels.shape[0])
+        total_acc = torch.sum(output_labels == labels).item() / labels.shape[0]
+        print("total accuracy: ", total_acc)
+        return total_acc
