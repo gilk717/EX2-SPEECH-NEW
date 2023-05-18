@@ -9,7 +9,7 @@ import numpy as np
 import random
 import matplotlib.pyplot as plt
 
-random.seed(15)
+random.seed(21)
 
 def plot_stft_and_log_mel_spectrogram(audio_data, label, sample_rate=22050, hop_length=512 // 4, n_fft=512, n_mels=80):
     fig, ax = plt.subplots(nrows=1, ncols=1, sharex=True, figsize=(10, 6), gridspec_kw={'hspace': 0.3})
@@ -56,7 +56,7 @@ class TrainingParameters:
     default values (so run won't break when we test this).
     """
     batch_size: int = 32
-    num_epochs: int = 100
+    num_epochs: int = 200
     train_json_path: str = "jsons/train.json"  # you should use this file path to load your train data
     test_json_path: str = "jsons/test.json"  # you should use this file path to load your test data
     # other training hyper parameters
@@ -68,7 +68,7 @@ class OptimizationParameters:
     This dataclass defines optimization related hyper-parameters to be passed to the model.
     feel free to add/change it as you see fit.
     """
-    learning_rate: float = 0.0005
+    learning_rate: float = 0.0001
 
 
 class MusicClassifier:
@@ -239,6 +239,7 @@ class ClassifierHandler:
                 cur_labels_torch = torch.tensor([])
         train_paths_file.close()
         print("finished loading training data")
+        # convert each weights tensor to a list than print it as a comma separted list
         return train_loader
 
     @staticmethod
@@ -284,3 +285,6 @@ class ClassifierHandler:
         total_acc = torch.sum(output_labels == labels).item() / labels.shape[0]
         print("total accuracy: ", total_acc)
         return total_acc
+
+ClassifierHandler.train_new_model(TrainingParameters())
+
