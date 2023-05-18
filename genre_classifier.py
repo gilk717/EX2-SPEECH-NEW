@@ -306,5 +306,3 @@ class ClassifierHandler:
         print("total accuracy: ", total_acc)
         return total_acc
 
-ClassifierHandler.train_new_model(TrainingParameters())
-
