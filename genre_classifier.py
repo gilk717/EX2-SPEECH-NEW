@@ -23,19 +23,6 @@ def plot_stft_and_log_mel_spectrogram(audio_data, label, sample_rate=22050, hop_
     plt.show()
 
 
-def plot_spectral_center(audio_data, label, sample_rate=22050):
-    # spectral centroid -- centre of mass -- weighted mean of the frequencies present in the sound
-    spectral_centroids = librosa.feature.spectral_centroid(y=audio_data, sr=sample_rate)[0]
-    # Computing the time variable for visualization
-    frames = range(len(spectral_centroids))
-    t = librosa.frames_to_time(frames)
-    # Normalising the spectral centroid for visualisation
-    # Plotting the Spectral Centroid along the waveform
-    plt.plot(t, spectral_centroids, color='r')
-    plt.title(label)
-    plt.show()
-
-
 class Genre(Enum):
     """
     This enum class is optional and defined for your convinience, you are not required to use it.
