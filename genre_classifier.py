@@ -9,32 +9,7 @@ import numpy as np
 import random
 import matplotlib.pyplot as plt
 
-random.seed(15)
-
-def plot_stft_and_log_mel_spectrogram(audio_data, label, sample_rate=22050, hop_length=512 // 4, n_fft=512, n_mels=80):
-    fig, ax = plt.subplots(nrows=1, ncols=1, sharex=True, figsize=(10, 6), gridspec_kw={'hspace': 0.3})
-    ax.set(title=label)
-    ax.label_outer()
-    log_mel_spectrogram = librosa.feature.melspectrogram(y=audio_data, sr=sample_rate, n_fft=n_fft,
-                                                         hop_length=hop_length, n_mels=n_mels)
-    mel_spect = librosa.power_to_db(log_mel_spectrogram, ref=np.max)
-    fig.colorbar(librosa.display.specshow(mel_spect, hop_length=hop_length, sr=sample_rate, x_axis='time', y_axis='mel',
-                                          ax=ax, cmap='magma'), ax=ax)
-    plt.show()
-
-
-def plot_spectral_center(audio_data, label, sample_rate=22050):
-    # spectral centroid -- centre of mass -- weighted mean of the frequencies present in the sound
-    spectral_centroids = librosa.feature.spectral_centroid(y=audio_data, sr=sample_rate)[0]
-    # Computing the time variable for visualization
-    frames = range(len(spectral_centroids))
-    t = librosa.frames_to_time(frames)
-    # Normalising the spectral centroid for visualisation
-    # Plotting the Spectral Centroid along the waveform
-    plt.plot(t, spectral_centroids, color='r')
-    plt.title(label)
-    plt.show()
-
+random.seed(123)
 
 class Genre(Enum):
     """
@@ -52,11 +27,11 @@ class TrainingParameters:
     This dataclass defines a training configuration.
     feel free to add/change it as you see fit, do NOT remove the following fields as we will use
     them in test time.
-    If you add additional values to your training configuration please add them in here with 
+    If you add additional values to your training configuration please add them in here with
     default values (so run won't break when we test this).
     """
     batch_size: int = 32
-    num_epochs: int = 100
+    num_epochs: int = 300
     train_json_path: str = "jsons/train.json"  # you should use this file path to load your train data
     test_json_path: str = "jsons/test.json"  # you should use this file path to load your test data
     # other training hyper parameters
@@ -68,7 +43,7 @@ class OptimizationParameters:
     This dataclass defines optimization related hyper-parameters to be passed to the model.
     feel free to add/change it as you see fit.
     """
-    learning_rate: float = 0.0005
+    learning_rate: float = 0.00008
 
 
 class MusicClassifier:
@@ -141,7 +116,7 @@ class MusicClassifier:
         - update gradients using SGD
 
         Note: in practice - the optimization process is usually external to the model.
-        We thought it may result in less coding needed if you are to apply it here, hence 
+        We thought it may result in less coding needed if you are to apply it here, hence
         OptimizationParameters are passed to the initialization function
         """
         first_class_labels = torch.zeros_like(labels)
@@ -159,7 +134,7 @@ class MusicClassifier:
 
     def get_weights_and_biases(self):
         """
-        This function returns the weights and biases associated with this model object, 
+        This function returns the weights and biases associated with this model object,
         should return a tuple: (weights, biases)
         """
         return (
@@ -180,6 +155,10 @@ class MusicClassifier:
 
 class ClassifierHandler:
 
+    F_w1_file = "model_files/F_w1.txt"
+    F_w2_file = "model_files/F_w2.txt"
+    F_w3_file = "model_files/F_w3.txt"
+
     @staticmethod
     def train_new_model(training_parameters: TrainingParameters) -> MusicClassifier:
         """
@@ -196,6 +175,11 @@ class ClassifierHandler:
                 labels = batch[1]
                 scores = module.forward(feats)
                 module.backward(feats, scores, labels)
+
+        ClassifierHandler.print_tensor_of_weights_as_list(module.first_class_weights, ClassifierHandler.F_w1_file)
+        ClassifierHandler.print_tensor_of_weights_as_list(module.second_class_weights, ClassifierHandler.F_w2_file)
+        ClassifierHandler.print_tensor_of_weights_as_list(module.third_class_weights, ClassifierHandler.F_w3_file)
+        ClassifierHandler.get_pretrained_model()
         ClassifierHandler.compute_accuracy(test_data, test_labels, module)
         return module
 
@@ -238,28 +222,31 @@ class ClassifierHandler:
                 cur_data_torch = torch.tensor([])
                 cur_labels_torch = torch.tensor([])
         train_paths_file.close()
-        print("finished loading training data")
         return train_loader
+
+    @staticmethod
+    def print_tensor_of_weights_as_list(tensor, the_filename):
+        list_tensor = tensor.tolist()
+        with open(the_filename, 'w') as f:
+            for s in list_tensor:
+                f.write(str(s) + '\n')
 
     @staticmethod
     def get_pretrained_model() -> MusicClassifier:
         """
-        This function should construct a 'MusicClassifier' object, load it's trained weights / 
+        This function should construct a 'MusicClassifier' object, load it's trained weights /
         hyper-parameters and return the loaded model
         """
         module = MusicClassifier(OptimizationParameters())
-        module.set_weights(torch.tensor([-0.0057978, 0.09079067, -0.06116471, -0.29027027, -0.09404992, -0.16239388,
-                                         -0.16560023, -0.03633982, 0.13538432, -0.1510415, 0.21880685, -0.09579992,
-                                         -0.0398302, 0.02022951, 0.18496828, 0.00722523, 0.561934, -0.17014208,
-                                         -0.02337782, 0.16052568, -0.00093151, -0.00308735, -0.02399822]),
-                           torch.tensor([0.03940499, -0.04013069, 0.00405579, 0.13892996, -0.0576029, -0.10031118,
-                                         0.14940748, 0.01245282, 0.07959052, 0.0941859, -0.01559121, 0.10083368,
-                                         -0.2745416, -0.20979874, -0.02631551, 0.14107245, 0.13260175, -0.3964954,
-                                         0.05904585, -0.01934657, -0.00569618, -0.02464337, -0.02358416]),
-                           torch.tensor([0.0067467, 0.01117177, 0.07332505, 0.00546377, 0.08037535, 0.23784086,
-                                         0.08857453, -0.01758306, -0.11535291, 0.13901068, 0.08652489, -0.13349035,
-                                         0.15270807, 0.16684859, 0.1583327, -0.29116356, -0.33416405, 0.32580003,
-                                         -0.20485455, -0.02429762, -0.00295077, 0.01629465, 0.12602653]))
+        with open(ClassifierHandler.F_w1_file, 'r') as f:
+            tensor_list = [float(line.rstrip('\n')) for line in f]
+            module.first_class_weights = torch.tensor(tensor_list)
+        with open(ClassifierHandler.F_w2_file, 'r') as f:
+            tensor_list = [float(line.rstrip('\n')) for line in f]
+            module.second_class_weights = torch.tensor(tensor_list)
+        with open(ClassifierHandler.F_w3_file, 'r') as f:
+            tensor_list = [float(line.rstrip('\n')) for line in f]
+            module.third_class_weights = torch.tensor(tensor_list)
         return module
 
     @staticmethod
@@ -284,3 +271,5 @@ class ClassifierHandler:
         total_acc = torch.sum(output_labels == labels).item() / labels.shape[0]
         print("total accuracy: ", total_acc)
         return total_acc
+
+ClassifierHandler.train_new_model(TrainingParameters())
