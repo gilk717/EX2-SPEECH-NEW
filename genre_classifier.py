@@ -271,5 +271,3 @@ class ClassifierHandler:
         total_acc = torch.sum(output_labels == labels).item() / labels.shape[0]
         print("total accuracy: ", total_acc)
         return total_acc
-
-ClassifierHandler.train_new_model(TrainingParameters())
