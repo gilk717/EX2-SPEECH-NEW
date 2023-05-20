@@ -7,7 +7,6 @@ import librosa
 import json
 import numpy as np
 import random
-import matplotlib.pyplot as plt
 
 random.seed(123)
 
@@ -168,19 +167,16 @@ class ClassifierHandler:
         # Opening JSON file
         module = MusicClassifier(OptimizationParameters())
         train_loader = ClassifierHandler.load_train_set_in_batches(training_parameters, module)
-        test_data, test_labels = ClassifierHandler.load_test_set(training_parameters)
         for epoch in range(training_parameters.num_epochs):
             for batch in train_loader:
                 feats = batch[0]
                 labels = batch[1]
                 scores = module.forward(feats)
                 module.backward(feats, scores, labels)
-
         ClassifierHandler.print_tensor_of_weights_as_list(module.first_class_weights, ClassifierHandler.F_w1_file)
         ClassifierHandler.print_tensor_of_weights_as_list(module.second_class_weights, ClassifierHandler.F_w2_file)
         ClassifierHandler.print_tensor_of_weights_as_list(module.third_class_weights, ClassifierHandler.F_w3_file)
         ClassifierHandler.get_pretrained_model()
-        ClassifierHandler.compute_accuracy(test_data, test_labels, module)
         return module
 
     @staticmethod
